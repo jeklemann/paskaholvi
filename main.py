@@ -14,7 +14,7 @@ KEY_LEN = 256 // 8
 
 
 def gen_salt():
-    return os.urandom(SALT_LEN // 8)
+    return os.urandom(SALT_LEN)
 
 
 class Entry:
@@ -57,7 +57,6 @@ class Entry:
             bytes.fromhex(data["salt"]),
             data["notes"]
         )
-
 
 
 class Database:
@@ -142,7 +141,7 @@ class Database:
         cipher = pyaes.AESModeOfOperationCTR(key)
         enc_passwd = cipher.encrypt(password.encode())
 
-        self.entries.append(Entry(name, url, username, enc_passwd, gen_salt(), notes))
+        self.entries.append(Entry(name, url, username, enc_passwd, salt, notes))
         self.encrypt_entries()
 
         return True
