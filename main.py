@@ -114,7 +114,6 @@ class Database:
         for entry in entries:
             self.entries.append(Entry.decode(entry))
 
-        print(entries)
         self.passwd = passwd.encode()
         self.unlocked = True
         return True
@@ -131,9 +130,7 @@ class Database:
         entry_dicts = []
         for entry in self.entries:
             entry_dicts.append(entry.encode())
-        print(entry_dicts)
         entries = json.dumps(entry_dicts)
-        print(entries)
         self.enc_entries = cipher.encrypt(entries)
 
     def add_entry(self, name, url, username, password, notes):
@@ -214,7 +211,7 @@ class Database:
         )
 
 
-def main():
+def run_tests():
     db = Database.create_new_database("foobar")
     print(db.enc_entries, db.enc_passwd, db.salt)
     print(db.unlock("foobar"))
@@ -228,6 +225,10 @@ def main():
     print(db.unlock("foobar"))
     print(db.del_entry(entry.id))
     print(db.entries)
+
+
+def main():
+    run_tests()
 
     # Create the application instance
     app = QApplication(sys.argv)
