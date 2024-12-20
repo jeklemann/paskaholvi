@@ -17,27 +17,6 @@ def gen_salt():
     return os.urandom(SALT_LEN // 8)
 
 
-def create_default_entries(password_bytes, salt):
-    key = hashlib.pbkdf2_hmac('sha3_256', password_bytes, salt, PBKDF2_ITERS)
-    cipher = pyaes.AESModeOfOperationCTR(key)
-    entries = json.dumps([])
-    enc_entries = cipher.encrypt(entries)
-
-    return enc_entries
-
-
-def create_new_database(password):
-    salt = gen_salt()
-    password_bytes = password.encode()
-    salted_password = password_bytes + salt
-    enc_passwd = hashlib.sha3_256(salted_password).digest()
-
-    empty_entries = create_default_entries(password_bytes, salt)
-    db = Database(enc_passwd, salt, empty_entries)
-
-    return db
-
-
 class Entry:
     def __init__(self, name, url, username, enc_passwd, salt, notes):
         self.name = name
@@ -48,14 +27,37 @@ class Entry:
         self.notes = notes
 
     def decrypt_password(self, master_passwd):
-        kd = hashlib.pbkdf2_hmac(
+        key = hashlib.pbkdf2_hmac(
             'sha3_256',
             master_passwd.encode(),
             self.salt,
             PBKDF2_ITERS,
             KEY_LEN
         )
-        return kd
+        cipher = pyaes.AESModeOfOperationCTR(key)
+        return cipher.decrypt(self.enc_passwd).decode()
+
+    def encode(self):
+        return {
+            "name": self.name,
+            "url": self.url,
+            "username": self.username,
+            "enc_passwd": self.enc_passwd.hex(),
+            "salt": self.salt.hex(),
+            "notes": self.notes
+        }
+
+    @classmethod
+    def decode(cls, data):
+        return cls(
+            data["name"],
+            data["url"],
+            data["username"],
+            bytes.fromhex(data["enc_passwd"]),
+            bytes.fromhex(data["salt"]),
+            data["notes"]
+        )
+
 
 
 class Database:
@@ -70,6 +72,7 @@ class Database:
     def lock(self):
         self.unlocked = False
         self.passwd = None
+        self.entries = None
 
     def unlock(self, passwd):
         """
@@ -103,10 +106,62 @@ class Database:
 
         self.entries = []
         for entry in entries:
-            self.entries.append(Entry(**entry))
+            self.entries.append(Entry.decode(entry))
 
         print(entries)
+        self.passwd = passwd.encode()
+        self.unlocked = True
         return True
+
+    def encrypt_entries(self):
+        """
+        Returns True if successfully encrypted, and False if vault is locked.
+        """
+        if not self.unlocked:
+            return False
+
+        key = hashlib.pbkdf2_hmac('sha3_256', self.passwd, self.salt, PBKDF2_ITERS)
+        cipher = pyaes.AESModeOfOperationCTR(key)
+        entry_dicts = []
+        for entry in self.entries:
+            entry_dicts.append(entry.encode())
+        print(entry_dicts)
+        entries = json.dumps(entry_dicts)
+        print(entries)
+        self.enc_entries = cipher.encrypt(entries)
+
+    def add_entry(self, name, url, username, password, notes):
+        """
+        Returns True if successfully added, and False if vault is locked.
+        """
+        if not self.unlocked:
+            return False
+
+        salt = gen_salt()
+        key = hashlib.pbkdf2_hmac('sha3_256', self.passwd, salt, PBKDF2_ITERS)
+        cipher = pyaes.AESModeOfOperationCTR(key)
+        enc_passwd = cipher.encrypt(password.encode())
+
+        self.entries.append(Entry(name, url, username, enc_passwd, gen_salt(), notes))
+        self.encrypt_entries()
+
+        return True
+
+    @classmethod
+    def create_new_database(cls, password):
+        salt = gen_salt()
+        password_bytes = password.encode()
+        salted_password = password_bytes + salt
+        enc_passwd = hashlib.sha3_256(salted_password).digest()
+
+        key = hashlib.pbkdf2_hmac('sha3_256', password_bytes, salt, PBKDF2_ITERS)
+        cipher = pyaes.AESModeOfOperationCTR(key)
+        entries = json.dumps([])
+        enc_entries = cipher.encrypt(entries)
+
+        db = cls(enc_passwd, salt, enc_entries)
+
+        return db
 
     def save_to_file(self, name):
         save_data = {
@@ -131,9 +186,11 @@ class Database:
 
 
 def main():
-    db = create_new_database("foobar")
+    db = Database.create_new_database("foobar")
     print(db.enc_entries, db.enc_passwd, db.salt)
     print(db.unlock("foobar"))
+    print(db.add_entry("bruh", "https://google.com", "yurrr", "lmaaooo", "note"))
+    print(db.entries[0].decrypt_password("foobar"))
     db.save_to_file("./thefile")
     db = Database.load_from_file("./thefile")
     print(db.enc_entries, db.enc_passwd, db.salt)
