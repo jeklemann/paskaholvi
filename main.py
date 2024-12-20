@@ -5,6 +5,7 @@ import json
 import os
 import pyaes
 import sys
+import uuid
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel
 
@@ -18,7 +19,11 @@ def gen_salt():
 
 
 class Entry:
-    def __init__(self, name, url, username, enc_passwd, salt, notes):
+    def __init__(self, id, name, url, username, enc_passwd, salt, notes):
+        if id is not None:
+            self.id = id
+        else:
+            self.id = str(uuid.uuid4())
         self.name = name
         self.url = url
         self.username = username
@@ -39,6 +44,7 @@ class Entry:
 
     def encode(self):
         return {
+            "id": self.id,
             "name": self.name,
             "url": self.url,
             "username": self.username,
@@ -50,6 +56,7 @@ class Entry:
     @classmethod
     def decode(cls, data):
         return cls(
+            data["id"],
             data["name"],
             data["url"],
             data["username"],
@@ -131,17 +138,40 @@ class Database:
 
     def add_entry(self, name, url, username, password, notes):
         """
-        Returns True if successfully added, and False if vault is locked.
+        Returns Entry if successfully added, and None if vault is locked.
         """
         if not self.unlocked:
-            return False
+            return None
 
         salt = gen_salt()
         key = hashlib.pbkdf2_hmac('sha3_256', self.passwd, salt, PBKDF2_ITERS)
         cipher = pyaes.AESModeOfOperationCTR(key)
         enc_passwd = cipher.encrypt(password.encode())
 
-        self.entries.append(Entry(name, url, username, enc_passwd, salt, notes))
+        entry = Entry(None, name, url, username, enc_passwd, salt, notes)
+        self.entries.append(entry)
+        self.encrypt_entries()
+
+        return entry
+
+    def del_entry(self, id):
+        """
+        Returns True if successfully deleted,
+        Returns False if vault is locked or entry is not found.
+        """
+        if not self.unlocked:
+            return False
+
+        index = -1
+        for i in range(len(self.entries)):
+            if self.entries[i].id == id:
+                index = i
+                break
+
+        if index == -1:
+            return False
+
+        self.entries.pop(index)
         self.encrypt_entries()
 
         return True
@@ -188,12 +218,16 @@ def main():
     db = Database.create_new_database("foobar")
     print(db.enc_entries, db.enc_passwd, db.salt)
     print(db.unlock("foobar"))
-    print(db.add_entry("bruh", "https://google.com", "yurrr", "lmaaooo", "note"))
-    print(db.entries[0].decrypt_password("foobar"))
+    entry = db.add_entry("bruh", "https://google.com", "yurrr", "lmaaooo", "note")
+    print(entry.id)
+    print(entry.decrypt_password("foobar"))
+    print(db.entries)
     db.save_to_file("./thefile")
     db = Database.load_from_file("./thefile")
-    print(db.enc_entries, db.enc_passwd, db.salt)
+    print("Loaded: ", db.enc_entries, db.enc_passwd, db.salt)
     print(db.unlock("foobar"))
+    print(db.del_entry(entry.id))
+    print(db.entries)
 
     # Create the application instance
     app = QApplication(sys.argv)
