@@ -109,11 +109,10 @@ class Database:
         return True
 
     def save_to_file(self, name):
-        # WIP
         save_data = {
-            "enc_passwd": repr(self.enc_passwd),
-            "salt": repr(self.salt),
-            "enc_entries": repr(self.enc_entries)
+            "enc_passwd": self.enc_passwd.hex(),
+            "salt": self.salt.hex(),
+            "enc_entries": self.enc_entries.hex()
         }
 
         with open(name, 'w') as file:
@@ -121,14 +120,13 @@ class Database:
 
     @classmethod
     def load_from_file(cls, name):
-        # WIP
         with open(name, 'r') as file:
             data = json.load(file)
 
         return Database(
-            repr(data["enc_passwd"]),
-            repr(data["salt"]),
-            repr(data["enc_entries"])
+            bytes.fromhex(data["enc_passwd"]),
+            bytes.fromhex(data["salt"]),
+            bytes.fromhex(data["enc_entries"])
         )
 
 
@@ -139,6 +137,7 @@ def main():
     db.save_to_file("./thefile")
     db = Database.load_from_file("./thefile")
     print(db.enc_entries, db.enc_passwd, db.salt)
+    print(db.unlock("foobar"))
 
     # Create the application instance
     app = QApplication(sys.argv)
